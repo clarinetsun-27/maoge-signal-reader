@@ -1,0 +1,22 @@
+[Unit]
+Description=Maoge Weekly Performance Report
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/maoge_advisor
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/root/maoge_advisor:/root/maoge_advisor/modules"
+
+ExecStart=/usr/bin/python3 /root/maoge_advisor/feedback_manager.py --action schedule-weekly
+
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=maoge_weekly_report
+
+[Install]
+WantedBy=multi-user.target

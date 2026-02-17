@@ -1,0 +1,25 @@
+[Unit]
+Description=Maoge Signal Reader Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/maoge_advisor
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/root/maoge_advisor:/root/maoge_advisor/modules"
+
+# 主服务：目录监控模式
+ExecStart=/usr/bin/python3 /root/maoge_advisor/wechat_image_receiver.py --mode directory --watch-dir /root/maoge_advisor/maoge_images
+
+# 自动重启
+Restart=always
+RestartSec=10
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=maoge_signal_reader
+
+[Install]
+WantedBy=multi-user.target
