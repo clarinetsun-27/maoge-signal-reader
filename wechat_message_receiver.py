@@ -260,6 +260,20 @@ def feedback():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/', methods=['GET'])
+def index():
+    """上传页面"""
+    # 读取HTML文件
+    html_path = os.path.join(os.path.dirname(__file__), 'upload_page.html')
+    if os.path.exists(html_path):
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    else:
+        return '''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>猫哥图文解读系统</title></head>
+<body><h1>上传页面文件未找到</h1><p>请确保upload_page.html在正确位置</p></body></html>'''
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """健康检查"""
