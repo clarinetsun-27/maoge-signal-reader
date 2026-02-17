@@ -1,0 +1,22 @@
+[Unit]
+Description=Maoge WeChat Message Receiver
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/maoge_advisor
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/root/maoge_advisor:/root/maoge_advisor/modules"
+
+ExecStart=/usr/bin/python3 /root/maoge_advisor/wechat_message_receiver.py --host 0.0.0.0 --port 8888
+
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=maoge_wechat_receiver
+
+[Install]
+WantedBy=multi-user.target
