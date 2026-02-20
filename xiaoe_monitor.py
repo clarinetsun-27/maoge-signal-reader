@@ -108,13 +108,21 @@ class XiaoeMonitor:
         try:
             logger.info("开始登录小鹅通...")
             
+            # 检查是否有保存的登录凭证
+            auth_file = self.data_dir / "xiaoe_auth.json"
+            state_file = self.data_dir / "login_state.json"
+            
+            if auth_file.exists() or state_file.exists():
+                logger.info("发现已保存的登录凭证，尝试使用...")
+                # 登录凭证已在context创建时加载，直接访问页面
+            
             # 访问店铺首页
             page.goto(self.shop_url, wait_until='networkidle', timeout=30000)
             time.sleep(2)
             
             # 检查是否已登录
             if self._is_logged_in(page):
-                logger.info("已登录，跳过登录流程")
+                logger.info("✅ 已登录，跳过登录流程")
                 return True
             
             # 查找登录按钮
@@ -449,14 +457,27 @@ class XiaoeMonitor:
             browser = p.chromium.launch(headless=headless)
             
             # 尝试加载登录状态
+            # 优先使用xiaoe_auth.json（从本地上传的凭证）
+            auth_file = self.data_dir / "xiaoe_auth.json"
             state_file = self.data_dir / "login_state.json"
-            if state_file.exists():
+            
+            storage_file = None
+            if auth_file.exists():
+                storage_file = auth_file
+                logger.info("发现上传的登录凭证文件: xiaoe_auth.json")
+            elif state_file.exists():
+                storage_file = state_file
+                logger.info("发现本地登录状态文件: login_state.json")
+            
+            if storage_file:
                 try:
-                    context = browser.new_context(storage_state=str(state_file))
-                    logger.info("已加载登录状态")
-                except:
+                    context = browser.new_context(storage_state=str(storage_file))
+                    logger.info(f"✅ 已加载登录状态: {storage_file.name}")
+                except Exception as e:
+                    logger.warning(f"加载登录状态失败: {e}，使用新context")
                     context = browser.new_context()
             else:
+                logger.warning("未找到登录凭证文件，需要手动登录")
                 context = browser.new_context()
             
             page = context.new_page()
