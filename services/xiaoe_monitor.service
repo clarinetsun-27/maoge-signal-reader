@@ -1,0 +1,26 @@
+[Unit]
+Description=Xiaoe Content Monitor Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/maoge_advisor
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/root/maoge_advisor:/root/maoge_advisor/modules"
+Environment="ZZZAPI=sk-zk2030ee608147e62fdf6f6ea2ecfa74d9b6991cc80bc58e"
+Environment="OPENAI_API_KEY=sk-zk2030ee608147e62fdf6f6ea2ecfa74d9b6991cc80bc58e"
+Environment="DISPLAY=:99"
+
+# 猫哥小鹅通店铺URL（需要替换为实际URL）
+ExecStart=/usr/bin/python3 /root/maoge_advisor/xiaoe_monitor.py --shop-url "https://appqpljfemv4802.h5.xiaoeknow.com/" --interval 3600 --headless
+
+Restart=always
+RestartSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xiaoe_monitor
+
+[Install]
+WantedBy=multi-user.target
