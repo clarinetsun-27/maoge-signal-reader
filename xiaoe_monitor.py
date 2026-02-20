@@ -17,6 +17,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+import chinese_calendar
 
 # 添加模块路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -39,14 +40,14 @@ logger = logging.getLogger(__name__)
 class XiaoeMonitor:
     """小鹅通内容监控器"""
     
-    def __init__(self, shop_url, phone=None, check_interval=3600):
+    def __init__(self, shop_url, phone=None, check_interval=180):
         """
         初始化监控器
         
         Args:
             shop_url: 小鹅通店铺URL
             phone: 登录手机号（可选，首次需要）
-            check_interval: 检查间隔（秒），默认3600（1小时）
+            check_interval: 检查间隔（秒），默认180（3分钟）
         """
         self.shop_url = shop_url
         self.phone = phone
@@ -70,7 +71,13 @@ class XiaoeMonitor:
         # 图文处理器
         self.image_handler = MaogeImageHandler()
         
+        # 交易时间配置
+        self.trading_start = "09:30"  # 交易开始时间
+        self.trading_end = "15:00"    # 交易结束时间
+        
         logger.info(f"小鹅通监控器初始化完成: {shop_url}")
+        logger.info(f"交易时间: {self.trading_start} - {self.trading_end}")
+        logger.info(f"检查间隔: {check_interval}秒 ({check_interval/60}分钟)")
     
     def _load_content_history(self):
         """加载内容历史记录"""
@@ -348,6 +355,82 @@ class XiaoeMonitor:
         except Exception as e:
             logger.error(f"记录视频失败: {e}")
     
+    def is_trading_day(self):
+        """判断今天是否为交易日"""
+        try:
+            import chinese_calendar
+            today = datetime.now().date()
+            # 使用chinese_calendar判断是否为工作日（排除节假日）
+            return chinese_calendar.is_workday(today)
+        except:
+            # 如果chinese_calendar不可用，简单判断是否为周末
+            weekday = datetime.now().weekday()
+            return weekday < 5  # 周一到周五
+    
+    def is_trading_time(self):
+        """判断当前是否在交易时间内"""
+        now = datetime.now()
+        current_time = now.strftime("%H:%M")
+        
+        # 判断是否在交易时间段内
+        return self.trading_start <= current_time <= self.trading_end
+    
+    def should_monitor(self):
+        """判断当前是否应该监控"""
+        if not self.is_trading_day():
+            return False, "非交易日"
+        
+        if not self.is_trading_time():
+            return False, f"非交易时间（交易时间: {self.trading_start}-{self.trading_end}）"
+        
+        return True, "交易时间内"
+    
+    def wait_until_trading_time(self):
+        """等待到下一个交易时间"""
+        while True:
+            should_run, reason = self.should_monitor()
+            
+            if should_run:
+                logger.info(f"✅ {reason}，开始监控")
+                return
+            
+            # 计算下次检查时间
+            now = datetime.now()
+            
+            if not self.is_trading_day():
+                # 非交易日，等到明天早上9:00
+                tomorrow = now + timedelta(days=1)
+                next_check = tomorrow.replace(hour=9, minute=0, second=0, microsecond=0)
+                logger.info(f"⏸️  {reason}，等待到 {next_check.strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                # 交易日但非交易时间
+                current_time = now.strftime("%H:%M")
+                
+                if current_time < self.trading_start:
+                    # 还没到交易时间，等到9:30
+                    next_check = now.replace(
+                        hour=int(self.trading_start.split(':')[0]),
+                        minute=int(self.trading_start.split(':')[1]),
+                        second=0,
+                        microsecond=0
+                    )
+                    logger.info(f"⏸️  {reason}，等待到 {next_check.strftime('%H:%M:%S')}")
+                else:
+                    # 已过交易时间，等到明天9:30
+                    tomorrow = now + timedelta(days=1)
+                    next_check = tomorrow.replace(
+                        hour=int(self.trading_start.split(':')[0]),
+                        minute=int(self.trading_start.split(':')[1]),
+                        second=0,
+                        microsecond=0
+                    )
+                    logger.info(f"⏸️  {reason}，等待到 {next_check.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # 等待到下次检查时间
+            wait_seconds = (next_check - now).total_seconds()
+            if wait_seconds > 0:
+                time.sleep(min(wait_seconds, 300))  # 最多等5分钟，然后重新检查
+    
     def monitor_loop(self, headless=True):
         """
         监控循环
@@ -388,6 +471,9 @@ class XiaoeMonitor:
             check_count = 0
             while True:
                 try:
+                    # 等待到交易时间
+                    self.wait_until_trading_time()
+                    
                     check_count += 1
                     logger.info(f"\n{'='*60}")
                     logger.info(f"第 {check_count} 次检查 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
