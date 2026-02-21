@@ -64,6 +64,17 @@ class XiaoeMonitorTest:
                 logger.info("✅ 页面加载完成，等待内容渲染...")
                 time.sleep(5)
                 
+                # 滚动页面以触发动态内容加载
+                logger.info("📜 滚动页面加载动态内容...")
+                for i in range(3):
+                    page.evaluate("window.scrollBy(0, 1000)")
+                    time.sleep(2)
+                    logger.info(f"✅ 已滚动 {(i+1)*1000}px")
+                
+                # 再等待一段时间确保内容加载
+                logger.info("⏳ 等待动态内容加载...")
+                time.sleep(5)
+                
                 # 检查是否在圈子页面
                 current_url = page.url
                 logger.info(f"✅ 已在圈子页面: {current_url}")
