@@ -221,21 +221,31 @@ class XiaoeMonitorTest:
         author = content_info.get('author', '')
         text = content_info.get('text', '')
         
+        # 输出完整文本用于调试
+        logger.info(f"🔍 检查内容文本（前200字符）: {text[:200]}")
+        
         # 方案A：检测管理员标签
         admin_keywords = ['管理员', 'admin', '管理']
         for keyword in admin_keywords:
-            if keyword in author or keyword in text:
-                logger.info(f"✅ 检测到管理员发布的内容！作者: {content_info['author']}")
+            if keyword in text:
+                logger.info(f"✅ 检测到管理员发布的内容！关键词: {keyword}")
                 return True
         
-        # 备用：检查猫哥相关关键词
-        maoge_keywords = ['猫哥', 'maoge', '猫咖', '猫咒', '阳阳', '阳阳_酱与猫咖']
+        # 检查猫哥相关关键词（包括丽姐、熊猫助理）
+        maoge_keywords = [
+            '猫哥', 'maoge', 
+            '猫咖', '猫咒', 
+            '熊猫', '丽姐',
+            '助理',
+            '阳阳', '阳阳_酱与猫咖'
+        ]
         for keyword in maoge_keywords:
-            if keyword in author or keyword in text:
-                logger.info(f"✅ 检测到猫哥相关内容！作者: {content_info['author']}")
+            if keyword in text:
+                logger.info(f"✅ 检测到猫哥相关内容！关键词: {keyword}")
                 return True
         
-        logger.info(f"⚠️ 不是猫哥/管理员的内容，作者: {content_info['author']}")
+        logger.info(f"⚠️ 不是猫哥/管理员的内容")
+        logger.info(f"🔍 完整文本: {text}")
         return False
     
     def process_content(self, content_info):
