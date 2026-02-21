@@ -266,7 +266,10 @@ class XiaoeMonitorTest:
             try:
                 # 访问圈子页面
                 logger.info(f"🌐 访问圈子页面: {self.QUANZI_URL}")
-                page.goto(self.QUANZI_URL, wait_until='networkidle', timeout=30000)
+                # 使用domcontentloaded更快，增加超时时间
+                page.goto(self.QUANZI_URL, wait_until='domcontentloaded', timeout=60000)
+                logger.info("✅ 页面加载完成，等待内容渲染...")
+                time.sleep(5)  # 等待JavaScript渲染
                 
                 # 检查登录状态
                 if not self._is_logged_in(page):
