@@ -81,7 +81,13 @@ class XiaoeMonitorTest:
                 
                 # 获取整个页面的文本内容
                 logger.info("📖 获取页面文本内容...")
-                page_text = page.inner_text('body')
+                try:
+                    page.set_default_timeout(60000)  # 设置60秒超时
+                    page_text = page.inner_text('body', timeout=60000)
+                except Exception as e:
+                    logger.error(f"获取页面文本失败: {e}")
+                    logger.info("🔄 尝试使用备用方法...")
+                    page_text = page.evaluate("document.body.innerText")
                 
                 # 保存调试信息
                 self.save_debug_info(page, page_text)
@@ -143,7 +149,7 @@ class XiaoeMonitorTest:
             logger.error(f"Cookie加载失败: {e}")
             return False
     
-    def save_debug_info(self, page, page_text):
+    def save_debug_info(self, page, page_text=None):
         """保存调试信息"""
         try:
             os.makedirs(self.LOGS_DIR, exist_ok=True)
@@ -154,10 +160,13 @@ class XiaoeMonitorTest:
             logger.info(f"📸 已保存页面截图: {screenshot_path}")
             
             # 保存页面文本
-            text_path = f"{self.LOGS_DIR}/page_text.txt"
-            with open(text_path, 'w', encoding='utf-8') as f:
-                f.write(page_text)
-            logger.info(f"📝 已保存页面文本: {text_path}")
+            if page_text:
+                text_path = f"{self.LOGS_DIR}/page_text.txt"
+                with open(text_path, 'w', encoding='utf-8') as f:
+                    f.write(page_text)
+                logger.info(f"📝 已保存页面文本: {text_path}")
+            else:
+                logger.warning("⚠️ 页面文本为空，跳过保存")
             
         except Exception as e:
             logger.warning(f"保存调试信息失败: {e}")
