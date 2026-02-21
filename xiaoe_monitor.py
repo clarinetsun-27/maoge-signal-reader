@@ -502,16 +502,36 @@ class XiaoeMonitor:
             auth_file = self.data_dir / "xiaoe_auth.json"
             state_file = self.data_dir / "login_state.json"
             
+            # 先创建 context
+            context = browser.new_context(**context_options)
+            
+            # 然后加载 cookies
             if auth_file.exists():
                 logger.info(f"✅ 已加载登录状态: xiaoe_auth.json")
                 with open(auth_file, 'r', encoding='utf-8') as f:
-                    context_options['storage_state'] = json.load(f)
+                    data = json.load(f)
+                    # 支持Cookie-Editor格式（包含cookies键）和Playwright格式
+                    if isinstance(data, dict):
+                        if 'cookies' in data:
+                            # Cookie-Editor格式
+                            context.add_cookies(data['cookies'])
+                            logger.info(f"✅ 已加载 {len(data['cookies'])} 个Cookie（Cookie-Editor格式）")
+                        elif 'origins' in data or 'cookies' in str(data):
+                            # Playwright storage_state格式
+                            # 需要重新创建 context
+                            context.close()
+                            context = browser.new_context(storage_state=data)
+                            logger.info("✅ 已加载登录状态（Playwright格式）")
+                    elif isinstance(data, list):
+                        # 直接的cookies数组
+                        context.add_cookies(data)
+                        logger.info(f"✅ 已加载 {len(data)} 个Cookie")
             elif state_file.exists():
                 logger.info(f"✅ 已加载登录状态: login_state.json")
                 with open(state_file, 'r', encoding='utf-8') as f:
-                    context_options['storage_state'] = json.load(f)
-            
-            context = browser.new_context(**context_options)
+                    state_data = json.load(f)
+                    context.close()
+                    context = browser.new_context(storage_state=state_data)
             page = context.new_page()
             
             # 登录

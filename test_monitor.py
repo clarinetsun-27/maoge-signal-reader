@@ -48,7 +48,16 @@ class XiaoeMonitorTest:
         if self.auth_file.exists():
             logger.info(f"🔐 已加载登录凭证文件: {self.auth_file.name}")
             with open(self.auth_file, 'r', encoding='utf-8') as f:
-                cookies = json.load(f)
+                data = json.load(f)
+                # 支持两种格式：直接数组或包含cookies键的对象
+                if isinstance(data, dict) and 'cookies' in data:
+                    cookies = data['cookies']
+                elif isinstance(data, list):
+                    cookies = data
+                else:
+                    logger.error("❌ Cookie文件格式不正确")
+                    return False
+                
                 context.add_cookies(cookies)
                 logger.info(f"✅ 已加载 {len(cookies)} 个Cookie")
                 return True
