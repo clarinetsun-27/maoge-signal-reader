@@ -143,13 +143,14 @@ class XiaoeMonitorTest:
             if len(content_items) > 0:
                 first_item = content_items[0]
                 
-                # 获取作者信息
-                author_elements = first_item.locator('[class*="author"], [class*="user"], [class*="name"]').all()
+                # 获取作者信息（包括标签）
                 author_name = None
+                # 先尝试获取完整的作者区域文本（包含管理员标签）
+                author_elements = first_item.locator('[class*="author"], [class*="user"], [class*="name"]').all()
                 for elem in author_elements:
                     try:
                         text = elem.inner_text(timeout=1000)
-                        if text and len(text) < 20:
+                        if text and len(text) < 50:  # 增加长度限制以包含标签
                             author_name = text
                             break
                     except:
@@ -190,7 +191,7 @@ class XiaoeMonitorTest:
                 content_info = {
                     'author': author_name or '未知',
                     'time': publish_time or '未知',
-                    'text': content_text[:200] if content_text else '无文本',
+                    'text': content_text if content_text else '无文本',  # 保留完整文本用于检测
                     'images': image_urls,
                     'image_count': len(image_urls)
                 }
@@ -213,22 +214,28 @@ class XiaoeMonitorTest:
             return None
     
     def check_if_maoge_content(self, content_info):
-        """检查是否是猫哥的内容"""
+        """检查是否是猫哥的内容（管理员发布）"""
         if not content_info:
             return False
         
         author = content_info.get('author', '')
         text = content_info.get('text', '')
         
-        # 检查作者名称和内容文本
-        maoge_keywords = ['猫哥', 'maoge', '猫咖', '猫咪', '阳阳', '阳阳_酱与猫咖']
-        
-        for keyword in maoge_keywords:
+        # 方案A：检测管理员标签
+        admin_keywords = ['管理员', 'admin', '管理']
+        for keyword in admin_keywords:
             if keyword in author or keyword in text:
-                logger.info(f"✅ 检测到猫哥内容！作者: {content_info['author']}")
+                logger.info(f"✅ 检测到管理员发布的内容！作者: {content_info['author']}")
                 return True
         
-        logger.info(f"⚠️ 不是猫哥的内容，作者: {content_info['author']}")
+        # 备用：检查猫哥相关关键词
+        maoge_keywords = ['猫哥', 'maoge', '猫咖', '猫咒', '阳阳', '阳阳_酱与猫咖']
+        for keyword in maoge_keywords:
+            if keyword in author or keyword in text:
+                logger.info(f"✅ 检测到猫哥相关内容！作者: {content_info['author']}")
+                return True
+        
+        logger.info(f"⚠️ 不是猫哥/管理员的内容，作者: {content_info['author']}")
         return False
     
     def process_content(self, content_info):
