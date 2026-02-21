@@ -114,8 +114,29 @@ class XiaoeMonitorTest:
             # 等待内容加载
             time.sleep(3)
             
-            # 查找所有动态卡片
-            content_items = page.locator('[class*="feed"], [class*="post"], [class*="item"]').all()
+            # 尝试多种选择器
+            selectors = [
+                '[class*="feed"]',
+                '[class*="post"]', 
+                '[class*="item"]',
+                '[class*="card"]',
+                '[class*="content"]',
+                'article',
+                '[data-feed]',
+                '.feed-item',
+                '.post-item'
+            ]
+            
+            content_items = []
+            for selector in selectors:
+                items = page.locator(selector).all()
+                if len(items) > 0:
+                    logger.info(f"✅ 选择器 '{selector}' 找到 {len(items)} 个元素")
+                    content_items = items
+                    break
+                else:
+                    logger.debug(f"⚠️ 选择器 '{selector}' 未找到元素")
+            
             logger.info(f"找到 {len(content_items)} 个内容项")
             
             # 尝试获取第一个内容的信息
@@ -276,6 +297,18 @@ class XiaoeMonitorTest:
                     logger.error("❌ 登录状态检查失败")
                     browser.close()
                     return False
+                
+                # 保存页面截图和HTML用于调试
+                try:
+                    screenshot_path = "/root/maoge_advisor/logs/page_screenshot.png"
+                    html_path = "/root/maoge_advisor/logs/page_content.html"
+                    page.screenshot(path=screenshot_path)
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(page.content())
+                    logger.info(f"📸 已保存页面截图: {screenshot_path}")
+                    logger.info(f"📝 已保存HTML: {html_path}")
+                except Exception as e:
+                    logger.warning(f"保存调试信息失败: {e}")
                 
                 # 获取最新内容
                 content_info = self.get_latest_content(page)
