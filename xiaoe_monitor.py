@@ -2,11 +2,15 @@
 """
 小鹅通内容自动监控系统
 功能：
-1. 自动登录小鹅通
+1. 自动登录小鹅通圈子
 2. 监控猫哥发布的图文和视频
 3. 自动下载新内容
 4. 触发图文解读分析
 5. 推送结果到企业微信
+
+修复说明：
+- 将监控URL从H5店铺改为圈子地址
+- 圈子URL: https://quanzi.xiaoe-tech.com/c_6978813bd0343_9o1Xxs5A9981/feed_list
 """
 
 import os
@@ -40,16 +44,18 @@ logger = logging.getLogger(__name__)
 class XiaoeMonitor:
     """小鹅通内容监控器"""
     
-    def __init__(self, shop_url, phone=None, check_interval=180):
+    # 圈子URL常量
+    QUANZI_URL = "https://quanzi.xiaoe-tech.com/c_6978813bd0343_9o1Xxs5A9981/feed_list"
+    
+    def __init__(self, phone=None, check_interval=180):
         """
         初始化监控器
         
         Args:
-            shop_url: 小鹅通店铺URL
             phone: 登录手机号（可选，首次需要）
             check_interval: 检查间隔（秒），默认180（3分钟）
         """
-        self.shop_url = shop_url
+        self.shop_url = self.QUANZI_URL  # 使用圈子URL
         self.phone = phone
         self.check_interval = check_interval
         
@@ -75,7 +81,8 @@ class XiaoeMonitor:
         self.trading_start = "09:30"  # 交易开始时间
         self.trading_end = "15:00"    # 交易结束时间
         
-        logger.info(f"小鹅通监控器初始化完成: {shop_url}")
+        logger.info(f"小鹅通监控器初始化完成")
+        logger.info(f"圈子URL: {self.shop_url}")
         logger.info(f"交易时间: {self.trading_start} - {self.trading_end}")
         logger.info(f"检查间隔: {check_interval}秒 ({check_interval/60}分钟)")
     
@@ -100,35 +107,40 @@ class XiaoeMonitor:
     
     def login(self, page):
         """
-        登录小鹅通
+        登录小鹅通圈子
         
         Args:
             page: Playwright页面对象
         """
         try:
-            logger.info("开始登录小鹅通...")
+            logger.info("开始登录小鹅通圈子...")
             
             # 检查是否有保存的登录凭证
             auth_file = self.data_dir / "xiaoe_auth.json"
             state_file = self.data_dir / "login_state.json"
             
-            if auth_file.exists() or state_file.exists():
-                logger.info("发现已保存的登录凭证，尝试使用...")
-                # 登录凭证已在context创建时加载，直接访问页面
+            if auth_file.exists():
+                logger.info(f"✅ 发现上传的登录凭证文件: xiaoe_auth.json")
+            elif state_file.exists():
+                logger.info(f"✅ 发现服务器端登录凭证文件: login_state.json")
             
-            # 访问店铺首页
-            page.goto(self.shop_url, wait_until='networkidle', timeout=30000)
-            time.sleep(2)
+            # 访问圈子页面
+            logger.info(f"访问圈子页面: {self.shop_url}")
+            page.goto(self.shop_url, wait_until='domcontentloaded', timeout=60000)
+            time.sleep(3)
             
             # 检查是否已登录
             if self._is_logged_in(page):
                 logger.info("✅ 已登录，跳过登录流程")
                 return True
             
+            logger.info("⚠️ 未检测到登录状态")
+            
             # 查找登录按钮
             try:
                 login_btn = page.locator("text=登录").first
-                if login_btn.is_visible():
+                if login_btn.is_visible(timeout=5000):
+                    logger.info("找到登录按钮，点击...")
                     login_btn.click()
                     time.sleep(2)
             except:
@@ -136,7 +148,9 @@ class XiaoeMonitor:
             
             # 等待手动登录（使用微信扫码或手机号验证码）
             logger.info("=" * 50)
+            logger.info("⚠️ 需要手动登录")
             logger.info("请在浏览器中完成登录（微信扫码或手机验证码）")
+            logger.info("或者使用本地电脑导出Cookie并上传xiaoe_auth.json")
             logger.info("等待登录完成...")
             logger.info("=" * 50)
             
@@ -153,374 +167,395 @@ class XiaoeMonitor:
                     state_file = self.data_dir / "login_state.json"
                     with open(state_file, 'w', encoding='utf-8') as f:
                         json.dump(storage_state, f)
+                    logger.info(f"✅ 登录状态已保存: {state_file}")
                     
                     return True
                 
                 time.sleep(2)
             
-            logger.error("登录超时")
+            logger.error("❌ 登录超时（5分钟）")
+            logger.error("请使用本地电脑导出Cookie并上传xiaoe_auth.json")
             return False
             
         except Exception as e:
-            logger.error(f"登录失败: {e}")
+            logger.error(f"❌ 登录失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
     
     def _is_logged_in(self, page):
         """检查是否已登录"""
         try:
-            # 检查页面是否有用户信息或"我的"等元素
-            # 这里需要根据实际页面结构调整
+            # 检查圈子页面的登录标识
             user_indicators = [
+                "text=发布",  # 圈子发布按钮
                 "text=我的",
                 "text=个人中心",
                 "[class*='user']",
-                "[class*='avatar']"
+                "[class*='avatar']",
+                ".user-info",
+                ".user-avatar"
             ]
             
             for indicator in user_indicators:
                 try:
-                    if page.locator(indicator).first.is_visible(timeout=2000):
+                    element = page.locator(indicator).first
+                    if element.is_visible(timeout=3000):
+                        logger.info(f"✅ 检测到登录标识: {indicator}")
                         return True
                 except:
                     continue
             
+            # 检查URL是否包含登录页面标识
+            current_url = page.url
+            if 'login' in current_url.lower():
+                logger.info("⚠️ 当前在登录页面")
+                return False
+            
+            logger.info("⚠️ 未检测到明确的登录标识")
             return False
-        except:
+        except Exception as e:
+            logger.error(f"检查登录状态失败: {e}")
             return False
     
     def get_latest_content(self, page):
         """
-        获取最新发布的内容
+        获取圈子最新发布的内容
         
         Returns:
             dict: {"images": [...], "videos": [...]}
         """
         try:
-            logger.info("检查最新内容...")
+            logger.info("📊 检查圈子最新内容...")
+            
+            # 刷新页面获取最新内容
+            page.reload(wait_until='domcontentloaded', timeout=30000)
+            time.sleep(2)
             
             new_content = {"images": [], "videos": []}
             
-            # 访问课程列表页面
-            # 注意：这里需要根据实际的店铺结构调整URL
-            page.goto(f"{self.shop_url}/course_list", wait_until='networkidle', timeout=30000)
-            time.sleep(3)
-            
-            # 获取所有课程项
-            courses = page.locator("[class*='course-item']").all()
-            
-            for course in courses[:10]:  # 只检查最新的10个
-                try:
-                    # 提取课程信息
-                    title = course.locator("[class*='title']").text_content()
-                    
-                    # 提取发布时间
-                    time_text = course.locator("[class*='time']").text_content()
-                    
-                    # 检查是否是今天发布的
-                    if self._is_today(time_text):
-                        # 提取课程链接
-                        link = course.locator("a").first.get_attribute("href")
+            # 获取圈子动态列表
+            # 注意：这里需要根据实际的圈子页面结构调整选择器
+            try:
+                # 等待内容加载
+                page.wait_for_selector(".feed-item, .post-item, [class*='feed'], [class*='post']", timeout=10000)
+                
+                # 获取所有动态项
+                feed_items = page.locator(".feed-item, .post-item, [class*='feed'], [class*='post']").all()
+                
+                logger.info(f"找到 {len(feed_items)} 个动态")
+                
+                for item in feed_items[:10]:  # 只检查最新的10条
+                    try:
+                        # 提取动态信息
+                        content_info = self._extract_feed_info(item)
                         
-                        # 判断内容类型
-                        if "图文" in title or "article" in link:
-                            content_id = self._extract_content_id(link)
-                            if content_id not in self.content_history["images"]:
-                                new_content["images"].append({
-                                    "id": content_id,
-                                    "title": title,
-                                    "link": link,
-                                    "time": time_text
-                                })
-                        elif "视频" in title or "video" in link:
-                            content_id = self._extract_content_id(link)
-                            if content_id not in self.content_history["videos"]:
-                                new_content["videos"].append({
-                                    "id": content_id,
-                                    "title": title,
-                                    "link": link,
-                                    "time": time_text
-                                })
-                except Exception as e:
-                    logger.error(f"解析课程项失败: {e}")
-                    continue
+                        if content_info:
+                            content_id = content_info['id']
+                            content_type = content_info['type']
+                            
+                            # 检查是否是新内容
+                            if content_type == 'image' and content_id not in self.content_history['images']:
+                                new_content['images'].append(content_info)
+                                logger.info(f"🆕 发现新图文: {content_info['title']}")
+                            elif content_type == 'video' and content_id not in self.content_history['videos']:
+                                new_content['videos'].append(content_info)
+                                logger.info(f"🆕 发现新视频: {content_info['title']}")
+                    
+                    except Exception as e:
+                        logger.error(f"解析动态项失败: {e}")
+                        continue
             
-            logger.info(f"发现新图文: {len(new_content['images'])}个, 新视频: {len(new_content['videos'])}个")
+            except PlaywrightTimeout:
+                logger.warning("⚠️ 等待内容加载超时")
+            except Exception as e:
+                logger.error(f"获取动态列表失败: {e}")
+            
             return new_content
             
         except Exception as e:
             logger.error(f"获取最新内容失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {"images": [], "videos": []}
     
-    def _is_today(self, time_text):
-        """判断是否是今天发布的"""
+    def _extract_feed_info(self, item):
+        """从动态项中提取信息"""
         try:
-            today = datetime.now().strftime("%Y-%m-%d")
-            return today in time_text or "今天" in time_text or "小时前" in time_text
-        except:
-            return False
+            # 这里需要根据实际的圈子页面结构调整
+            # 提取标题、链接、时间等信息
+            
+            title = ""
+            link = ""
+            content_id = ""
+            content_type = "image"  # 默认为图文
+            
+            # 尝试提取标题
+            try:
+                title_elem = item.locator(".title, .feed-title, [class*='title']").first
+                title = title_elem.inner_text().strip()
+            except:
+                title = "未知标题"
+            
+            # 尝试提取链接
+            try:
+                link_elem = item.locator("a").first
+                link = link_elem.get_attribute("href")
+            except:
+                pass
+            
+            # 生成内容ID（使用标题+时间的hash）
+            import hashlib
+            content_id = hashlib.md5(f"{title}{link}".encode()).hexdigest()
+            
+            # 判断内容类型
+            item_html = item.inner_html().lower()
+            if 'video' in item_html or '视频' in title:
+                content_type = "video"
+            
+            return {
+                'id': content_id,
+                'title': title,
+                'link': link,
+                'type': content_type,
+                'timestamp': datetime.now().isoformat()
+            }
+        
+        except Exception as e:
+            logger.error(f"提取动态信息失败: {e}")
+            return None
     
-    def _extract_content_id(self, link):
-        """从链接中提取内容ID"""
-        try:
-            # 从URL中提取ID
-            import re
-            match = re.search(r'/(\w+)$', link)
-            if match:
-                return match.group(1)
-            return link
-        except:
-            return link
-    
-    def download_image_content(self, page, content_info):
+    def download_content(self, page, content_info):
         """
-        下载图文内容
+        下载内容（图文或视频）
         
         Args:
             page: Playwright页面对象
             content_info: 内容信息字典
         """
         try:
-            logger.info(f"下载图文: {content_info['title']}")
+            logger.info(f"📥 下载内容: {content_info['title']}")
             
-            # 访问图文页面
+            # 构建完整URL
             full_url = content_info['link']
             if not full_url.startswith('http'):
-                full_url = self.shop_url.rstrip('/') + '/' + content_info['link'].lstrip('/')
+                # 圈子的链接可能是相对路径
+                base_url = "https://quanzi.xiaoe-tech.com"
+                full_url = base_url + full_url if full_url.startswith('/') else f"{base_url}/{full_url}"
             
-            page.goto(full_url, wait_until='networkidle', timeout=30000)
-            time.sleep(3)
+            # 访问内容页面
+            page.goto(full_url, wait_until='domcontentloaded', timeout=30000)
+            time.sleep(2)
             
-            # 截图保存
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"maoge_{timestamp}_{content_info['id']}.png"
-            filepath = self.image_dir / filename
-            
-            # 截取主要内容区域
-            try:
-                content_area = page.locator("[class*='content']").first
-                content_area.screenshot(path=str(filepath))
-            except:
-                # 如果找不到内容区域，截取整个页面
-                page.screenshot(path=str(filepath), full_page=True)
-            
-            logger.info(f"✅ 图文已保存: {filepath}")
+            if content_info['type'] == 'image':
+                # 下载图文
+                self._download_images(page, content_info)
+            elif content_info['type'] == 'video':
+                # 下载视频
+                self._download_video(page, content_info)
             
             # 记录到历史
-            self.content_history["images"][content_info['id']] = {
-                "title": content_info['title'],
-                "time": content_info['time'],
-                "file": str(filepath),
-                "downloaded_at": datetime.now().isoformat()
+            history_key = 'images' if content_info['type'] == 'image' else 'videos'
+            self.content_history[history_key][content_info['id']] = {
+                'title': content_info['title'],
+                'downloaded_at': datetime.now().isoformat()
             }
             self._save_content_history()
             
-            # 触发图文解读
-            self._trigger_analysis(filepath)
+        except Exception as e:
+            logger.error(f"下载内容失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    def _download_images(self, page, content_info):
+        """下载图文中的图片"""
+        try:
+            logger.info("📷 下载图文图片...")
             
-            return filepath
+            # 等待图片加载
+            time.sleep(2)
             
+            # 查找所有图片
+            images = page.locator("img").all()
+            
+            saved_images = []
+            for idx, img in enumerate(images):
+                try:
+                    src = img.get_attribute("src")
+                    if src and ('http' in src or src.startswith('//')):
+                        # 确保URL完整
+                        if src.startswith('//'):
+                            src = 'https:' + src
+                        
+                        # 下载图片
+                        import requests
+                        response = requests.get(src, timeout=30)
+                        
+                        if response.status_code == 200:
+                            # 保存图片
+                            filename = f"{content_info['id']}_{idx}.jpg"
+                            filepath = self.image_dir / filename
+                            
+                            with open(filepath, 'wb') as f:
+                                f.write(response.content)
+                            
+                            saved_images.append(str(filepath))
+                            logger.info(f"✅ 图片已保存: {filename}")
+                
+                except Exception as e:
+                    logger.error(f"下载图片失败: {e}")
+                    continue
+            
+            if saved_images:
+                logger.info(f"✅ 共下载 {len(saved_images)} 张图片")
+                
+                # 触发图文分析
+                self._analyze_images(content_info, saved_images)
+            else:
+                logger.warning("⚠️ 未找到可下载的图片")
+        
         except Exception as e:
             logger.error(f"下载图文失败: {e}")
-            return None
     
-    def _trigger_analysis(self, image_path):
-        """触发图文解读分析"""
+    def _download_video(self, page, content_info):
+        """下载视频"""
         try:
-            logger.info(f"开始分析图文: {image_path}")
+            logger.info("🎬 下载视频...")
+            
+            # 查找视频元素
+            video = page.locator("video").first
+            video_src = video.get_attribute("src")
+            
+            if video_src:
+                logger.info(f"视频URL: {video_src}")
+                # TODO: 实现视频下载逻辑
+                logger.info("⚠️ 视频下载功能待实现")
+            else:
+                logger.warning("⚠️ 未找到视频源")
+        
+        except Exception as e:
+            logger.error(f"下载视频失败: {e}")
+    
+    def _analyze_images(self, content_info, image_paths):
+        """分析图文内容"""
+        try:
+            logger.info("🤖 开始分析图文...")
             
             # 调用图文处理器
-            result = self.image_handler.process_image(str(image_path))
+            result = self.image_handler.process_images(
+                image_paths=image_paths,
+                title=content_info['title']
+            )
             
             if result:
-                logger.info(f"✅ 分析完成，已推送到企业微信")
+                logger.info("✅ 图文分析完成")
+                logger.info(f"分析结果: {result}")
             else:
-                logger.error("分析失败")
-                
-        except Exception as e:
-            logger.error(f"触发分析失败: {e}")
-    
-    def record_video(self, content_info):
-        """
-        记录视频信息（不下载视频文件）
+                logger.warning("⚠️ 图文分析未返回结果")
         
-        Args:
-            content_info: 视频信息字典
-        """
-        try:
-            logger.info(f"记录视频: {content_info['title']}")
-            
-            # 记录到历史
-            self.content_history["videos"][content_info['id']] = {
-                "title": content_info['title'],
-                "time": content_info['time'],
-                "link": content_info['link'],
-                "recorded_at": datetime.now().isoformat()
-            }
-            self._save_content_history()
-            
-            logger.info(f"✅ 视频已记录")
-            
         except Exception as e:
-            logger.error(f"记录视频失败: {e}")
-    
-    def is_trading_day(self):
-        """判断今天是否为交易日"""
-        try:
-            import chinese_calendar
-            today = datetime.now().date()
-            # 使用chinese_calendar判断是否为工作日（排除节假日）
-            return chinese_calendar.is_workday(today)
-        except:
-            # 如果chinese_calendar不可用，简单判断是否为周末
-            weekday = datetime.now().weekday()
-            return weekday < 5  # 周一到周五
+            logger.error(f"分析图文失败: {e}")
     
     def is_trading_time(self):
-        """判断当前是否在交易时间内"""
+        """检查是否在交易时间内"""
         now = datetime.now()
+        
+        # 检查是否是工作日
+        if not chinese_calendar.is_workday(now.date()):
+            return False
+        
+        # 检查时间范围
         current_time = now.strftime("%H:%M")
-        
-        # 判断是否在交易时间段内
         return self.trading_start <= current_time <= self.trading_end
-    
-    def should_monitor(self):
-        """判断当前是否应该监控"""
-        if not self.is_trading_day():
-            return False, "非交易日"
-        
-        if not self.is_trading_time():
-            return False, f"非交易时间（交易时间: {self.trading_start}-{self.trading_end}）"
-        
-        return True, "交易时间内"
-    
-    def wait_until_trading_time(self):
-        """等待到下一个交易时间"""
-        while True:
-            should_run, reason = self.should_monitor()
-            
-            if should_run:
-                logger.info(f"✅ {reason}，开始监控")
-                return
-            
-            # 计算下次检查时间
-            now = datetime.now()
-            
-            if not self.is_trading_day():
-                # 非交易日，等到明天早上9:00
-                tomorrow = now + timedelta(days=1)
-                next_check = tomorrow.replace(hour=9, minute=0, second=0, microsecond=0)
-                logger.info(f"⏸️  {reason}，等待到 {next_check.strftime('%Y-%m-%d %H:%M:%S')}")
-            else:
-                # 交易日但非交易时间
-                current_time = now.strftime("%H:%M")
-                
-                if current_time < self.trading_start:
-                    # 还没到交易时间，等到9:30
-                    next_check = now.replace(
-                        hour=int(self.trading_start.split(':')[0]),
-                        minute=int(self.trading_start.split(':')[1]),
-                        second=0,
-                        microsecond=0
-                    )
-                    logger.info(f"⏸️  {reason}，等待到 {next_check.strftime('%H:%M:%S')}")
-                else:
-                    # 已过交易时间，等到明天9:30
-                    tomorrow = now + timedelta(days=1)
-                    next_check = tomorrow.replace(
-                        hour=int(self.trading_start.split(':')[0]),
-                        minute=int(self.trading_start.split(':')[1]),
-                        second=0,
-                        microsecond=0
-                    )
-                    logger.info(f"⏸️  {reason}，等待到 {next_check.strftime('%Y-%m-%d %H:%M:%S')}")
-            
-            # 等待到下次检查时间
-            wait_seconds = (next_check - now).total_seconds()
-            if wait_seconds > 0:
-                time.sleep(min(wait_seconds, 300))  # 最多等5分钟，然后重新检查
     
     def monitor_loop(self, headless=True):
         """
-        监控循环
+        主监控循环
         
         Args:
-            headless: 是否无头模式
+            headless: 是否使用无头模式
         """
         logger.info("=" * 60)
-        logger.info("🚀 小鹅通内容监控系统启动")
-        logger.info(f"店铺URL: {self.shop_url}")
-        logger.info(f"检查间隔: {self.check_interval}秒 ({self.check_interval/3600}小时)")
+        logger.info("🚀 小鹅通圈子监控系统启动")
+        logger.info(f"圈子URL: {self.shop_url}")
+        logger.info(f"检查间隔: {self.check_interval}秒 ({self.check_interval/60}分钟)")
         logger.info("=" * 60)
         
         with sync_playwright() as p:
             # 启动浏览器
             browser = p.chromium.launch(headless=headless)
             
-            # 尝试加载登录状态
-            # 优先使用xiaoe_auth.json（从本地上传的凭证）
+            # 创建浏览器上下文，加载登录状态
+            context_options = {}
+            
+            # 优先使用上传的凭证文件
             auth_file = self.data_dir / "xiaoe_auth.json"
             state_file = self.data_dir / "login_state.json"
             
-            storage_file = None
             if auth_file.exists():
-                storage_file = auth_file
-                logger.info("发现上传的登录凭证文件: xiaoe_auth.json")
+                logger.info(f"✅ 已加载登录状态: xiaoe_auth.json")
+                with open(auth_file, 'r', encoding='utf-8') as f:
+                    context_options['storage_state'] = json.load(f)
             elif state_file.exists():
-                storage_file = state_file
-                logger.info("发现本地登录状态文件: login_state.json")
+                logger.info(f"✅ 已加载登录状态: login_state.json")
+                with open(state_file, 'r', encoding='utf-8') as f:
+                    context_options['storage_state'] = json.load(f)
             
-            if storage_file:
-                try:
-                    context = browser.new_context(storage_state=str(storage_file))
-                    logger.info(f"✅ 已加载登录状态: {storage_file.name}")
-                except Exception as e:
-                    logger.warning(f"加载登录状态失败: {e}，使用新context")
-                    context = browser.new_context()
-            else:
-                logger.warning("未找到登录凭证文件，需要手动登录")
-                context = browser.new_context()
-            
+            context = browser.new_context(**context_options)
             page = context.new_page()
             
             # 登录
             if not self.login(page):
-                logger.error("登录失败，退出监控")
+                logger.error("❌ 登录失败，监控系统无法启动")
                 browser.close()
                 return
             
-            # 监控循环
-            check_count = 0
+            # 主循环
             while True:
                 try:
-                    # 等待到交易时间
-                    self.wait_until_trading_time()
-                    
-                    check_count += 1
-                    logger.info(f"\n{'='*60}")
-                    logger.info(f"第 {check_count} 次检查 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                    logger.info(f"{'='*60}")
+                    # 检查是否在交易时间
+                    if not self.is_trading_time():
+                        now = datetime.now()
+                        logger.info(f"⏸️  非交易时间，等待到 {self.trading_start}")
+                        
+                        # 计算下次检查时间
+                        next_check = now.replace(
+                            hour=int(self.trading_start.split(':')[0]),
+                            minute=int(self.trading_start.split(':')[1]),
+                            second=0
+                        )
+                        
+                        if next_check <= now:
+                            next_check += timedelta(days=1)
+                        
+                        wait_seconds = (next_check - now).total_seconds()
+                        logger.info(f"下次检查时间: {next_check.strftime('%Y-%m-%d %H:%M:%S')}")
+                        
+                        time.sleep(min(wait_seconds, 3600))  # 最多等待1小时
+                        continue
                     
                     # 获取最新内容
                     new_content = self.get_latest_content(page)
                     
                     # 处理新图文
-                    for image_content in new_content["images"]:
-                        self.download_image_content(page, image_content)
-                        time.sleep(5)  # 避免请求过快
+                    for content in new_content['images']:
+                        self.download_content(page, content)
                     
-                    # 记录新视频
-                    for video_content in new_content["videos"]:
-                        self.record_video(video_content)
+                    # 处理新视频
+                    for content in new_content['videos']:
+                        self.download_content(page, content)
                     
                     # 等待下次检查
-                    logger.info(f"\n下次检查时间: {(datetime.now() + timedelta(seconds=self.check_interval)).strftime('%Y-%m-%d %H:%M:%S')}")
+                    logger.info(f"⏰ 等待 {self.check_interval} 秒后进行下次检查...")
                     time.sleep(self.check_interval)
-                    
+                
                 except KeyboardInterrupt:
-                    logger.info("\n收到停止信号，退出监控")
+                    logger.info("收到停止信号，正在退出...")
                     break
                 except Exception as e:
                     logger.error(f"监控循环出错: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
                     logger.info(f"等待 {self.check_interval} 秒后重试...")
                     time.sleep(self.check_interval)
             
@@ -532,17 +567,15 @@ def main():
     """主函数"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='小鹅通内容自动监控系统')
-    parser.add_argument('--shop-url', required=True, help='小鹅通店铺URL')
+    parser = argparse.ArgumentParser(description='小鹅通圈子内容自动监控系统')
     parser.add_argument('--phone', help='登录手机号（首次登录需要）')
-    parser.add_argument('--interval', type=int, default=3600, help='检查间隔（秒），默认3600')
+    parser.add_argument('--interval', type=int, default=180, help='检查间隔（秒），默认180（3分钟）')
     parser.add_argument('--headless', action='store_true', help='无头模式运行')
     
     args = parser.parse_args()
     
     # 创建监控器
     monitor = XiaoeMonitor(
-        shop_url=args.shop_url,
         phone=args.phone,
         check_interval=args.interval
     )
