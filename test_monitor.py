@@ -213,7 +213,7 @@ class XiaoeMonitorTest:
             logger.error(traceback.format_exc())
             return None
     
-    def check_if_maoge_content(self, content_info):
+    def check_if_maoge_content_old(self, content_info):
         """检查是否是猫哥的内容（管理员发布）"""
         if not content_info:
             return False
@@ -337,12 +337,13 @@ class XiaoeMonitorTest:
                     browser.close()
                     return False
                 
-                # 检查是否是猫哥的内容
-                if not self.check_if_maoge_content(content_info):
-                    logger.warning("⚠️ 最新内容不是猫哥发布的")
-                    logger.info("💡 提示：可能需要手动检查页面或调整检测逻辑")
+                # 检查是否有图片
+                if content_info['image_count'] == 0:
+                    logger.warning("⚠️ 最新内容没有图片，跳过处理")
                     browser.close()
                     return False
+                
+                logger.info(f"✅ 找到包含 {content_info['image_count']} 张图片的内容，开始分析...")
                 
                 # 处理内容
                 success = self.process_content(content_info)
