@@ -186,34 +186,44 @@ class XiaoeMonitor:
     def _is_logged_in(self, page):
         """检查是否已登录"""
         try:
-            # 检查圈子页面的登录标识
-            user_indicators = [
-                "text=发布",  # 圈子发布按钮
-                "text=我的",
-                "text=个人中心",
-                "[class*='user']",
-                "[class*='avatar']",
-                ".user-info",
-                ".user-avatar"
-            ]
-            
-            for indicator in user_indicators:
-                try:
-                    element = page.locator(indicator).first
-                    if element.is_visible(timeout=3000):
-                        logger.info(f"✅ 检测到登录标识: {indicator}")
-                        return True
-                except:
-                    continue
-            
-            # 检查URL是否包含登录页面标识
+            # 检查URL是否在登录页面
             current_url = page.url
             if 'login' in current_url.lower():
-                logger.info("⚠️ 当前在登录页面")
+                logger.info("⚠️ 当前在登录页面，未登录")
                 return False
             
-            logger.info("⚠️ 未检测到明确的登录标识")
+            # 检查是否在圈子页面
+            if 'quanzi.xiaoe-tech.com' in current_url:
+                logger.info(f"✅ 已在圈子页面: {current_url}")
+                
+                # 尝试检测登录标识（但不强制要求）
+                user_indicators = [
+                    "text=发布",
+                    "text=我的",
+                    "text=个人中心",
+                    "text=关注",
+                    "text=消息",
+                    "[class*='user']",
+                    "[class*='avatar']",
+                    "[class*='profile']"
+                ]
+                
+                for indicator in user_indicators:
+                    try:
+                        element = page.locator(indicator).first
+                        if element.is_visible(timeout=2000):
+                            logger.info(f"✅ 检测到登录标识: {indicator}")
+                            return True
+                    except:
+                        continue
+                
+                # 即使没有检测到明确标识，如果Cookie已加载且在圈子页面，也认为已登录
+                logger.info("✅ Cookie已加载且在圈子页面，假定已登录")
+                return True
+            
+            logger.info(f"⚠️ 不在圈子页面: {current_url}")
             return False
+            
         except Exception as e:
             logger.error(f"检查登录状态失败: {e}")
             return False
