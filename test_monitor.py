@@ -217,12 +217,14 @@ class XiaoeMonitorTest:
         if not content_info:
             return False
         
-        author = content_info.get('author', '').lower()
+        author = content_info.get('author', '')
+        text = content_info.get('text', '')
         
-        # 检查作者名称
-        maoge_keywords = ['猫哥', 'maoge', '猫', '哥']
+        # 检查作者名称和内容文本
+        maoge_keywords = ['猫哥', 'maoge', '猫咖', '猫咪', '阳阳', '阳阳_酱与猫咖']
+        
         for keyword in maoge_keywords:
-            if keyword in author:
+            if keyword in author or keyword in text:
                 logger.info(f"✅ 检测到猫哥内容！作者: {content_info['author']}")
                 return True
         
