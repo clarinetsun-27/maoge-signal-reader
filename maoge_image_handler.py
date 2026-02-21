@@ -112,7 +112,7 @@ class MaogeImageHandler:
             logger.info("步骤1: 提取文字...")
             text_content = self.ocr.extract_text(image_path)
             
-            if not text_content or len(text_content) < 50:
+            if not text_content or len(text_content) < 10:
                 logger.warning(f"文字提取失败或内容过短，实际内容: {repr(text_content)}")
                 return {
                     'success': False,
